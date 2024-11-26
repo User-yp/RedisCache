@@ -7,9 +7,9 @@ namespace RedisCache.DbService;
 public class CacheContext
 {
     public CacheContext() { }
-    public async Task<bool> InsertDatabase<T>(List<T> values, Assembly assembly) where T : class
+    public async Task<bool> InsertDatabase<T>(List<T> values) where T : class
     {
-        (var dbContextType, var dbSetType) = values[0].GetRedisDbSet(assembly);
+        (var dbContextType, var dbSetType) = values[0].GetRedisDbSet();
 
         using (var dbContext = (DbContext)Activator.CreateInstance(dbContextType))
         {

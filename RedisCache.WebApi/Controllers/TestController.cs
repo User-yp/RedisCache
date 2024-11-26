@@ -6,24 +6,17 @@ namespace RedisCache.WebApi.Controllers;
 [ApiController]
 public class TestController:ControllerBase
 {
-    private readonly RedisCacheService redisCache;
+    private readonly DomainService domain;
 
-    public TestController(RedisCacheService redisCache)
+    public TestController(DomainService domain)
     {
-        this.redisCache = redisCache;
+        this.domain = domain;
     }
 
     [HttpPost]
     public async Task<ActionResult> TestAsync()
     {
-        TestEntity testEntity = new()
-        {
-            Id = Guid.NewGuid(),
-            Name = "1",
-            Description= "2",
-            Type="01"
-        };
-        await redisCache.AddRedisAsync(testEntity);
+        await domain.AddTestEntityAsync();
         return Ok();
     }
 }

@@ -9,7 +9,7 @@ using RedisCache.DbService;
 
 namespace RedisCache;
 
-public class RedisCacheService
+public class RedisCache:IRedisCache
 {
     private readonly IRedisService redisService;
     private readonly CacheContext dBContext;
@@ -21,7 +21,7 @@ public class RedisCacheService
     private readonly List<string> redisKeys = new List<string>();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new ConcurrentDictionary<string, SemaphoreSlim>();
 
-    public RedisCacheService(IOptionsMonitor<RedisOptions> options, IRedisService redisService, CacheContext dBContext)
+    public RedisCache(IOptionsMonitor<RedisOptions> options, IRedisService redisService, CacheContext dBContext)
     {
 
         this.redisService = redisService;
@@ -33,7 +33,7 @@ public class RedisCacheService
         PollingThread();
     }
 
-    public void PollingThread()
+    private void PollingThread()
     {
         if (!isPolling || isPollingStarted)
             return;
@@ -67,7 +67,7 @@ public class RedisCacheService
         isPollingStarted = true;
     }
 
-    public async Task AddRedisAsync<T>(T value)
+    public async Task AddRedisAsync<T>(T value) where T : class
     {
         redisKeys.AddKey(typeof(T).Name);
 
@@ -83,7 +83,7 @@ public class RedisCacheService
         Console.WriteLine($"{Environment.CurrentManagedThreadId}-写入redis-{JsonConvert.SerializeObject(value)}");
     }
 
-    public async Task AddRedisAsync<T>(List<T> values)
+    public async Task AddRedisAsync<T>(List<T> values) where T : class
     {
         redisKeys.AddKey(typeof(T).Name);
         if (!isPolling)
@@ -99,7 +99,7 @@ public class RedisCacheService
             });
         }
     }
-    public async Task<bool> WriteDataBase<T>(T Tkey)
+    private async Task<bool> WriteDataBase<T>(T Tkey) where T : class
     {
 
         if (await GetCountAsync(typeof(T).Name) < threhold)
@@ -116,15 +116,16 @@ public class RedisCacheService
             listKey.Add(value.Key);
         }
 
-        /*if (!await dBContext.InsertDatabase(listValue))
-            return false;*/
+        if (!await dBContext.InsertDatabase(listValue))
+            return false;
         Console.WriteLine($"线程：{Environment.CurrentManagedThreadId}-写入数据库");
 
         await redisService.HashDeleteFieldsAsync(typeof(T).Name, listKey.AsEnumerable());
         Console.WriteLine($"线程：{Environment.CurrentManagedThreadId}-删除redis");
         return true;
     }
-    public async Task<bool> WriteDataBase(string Tkey)
+
+    private async Task<bool> WriteDataBase(string Tkey)
     {
         if (await GetCountAsync(Tkey) < threhold)
             return true;
@@ -213,9 +214,5 @@ public class RedisCacheService
         return false;
     }
 
-    public async Task DbSetTest<T>(List<T> values, Assembly assembly) where T : class
-    {
-        var res = await dBContext.InsertDatabase(values, assembly);
-    }
     #endregion
 }

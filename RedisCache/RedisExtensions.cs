@@ -18,7 +18,7 @@ public static class RedisExtensions
         });
         service.AddTransient<CacheContext>();
         service.AddSingleton<IRedisService, RedisService>();
-        service.AddScoped<RedisCacheService>();
+        service.AddScoped<IRedisCache, RedisCache>();
 
         return service;
     }
