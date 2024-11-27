@@ -6,13 +6,6 @@ namespace RedisCache.RedisServe;
 
 public static class RedisServiceExtension
 {
-    public static void AddKey(this List<string> strings, string key)
-    {
-        if (!strings.Contains(key))
-        {
-            strings.Add(key);
-        }
-    }
     public static IEnumerable<string> ToStrings(this IEnumerable<RedisKey> keys)
     {
         var redisKeys = keys as RedisKey[] ?? keys.ToArray();

@@ -8,7 +8,6 @@ builder.Services.AddRedisService("127.0.0.1", 2, 2, true, 2);
 builder.Services.AddDbContext<BaseDbContext>();
 builder.Services.AddScoped<DomainService>();
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

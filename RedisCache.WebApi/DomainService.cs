@@ -4,7 +4,7 @@ public class DomainService
 {
     private readonly IRedisCache redisCache;
 
-    public DomainService(BaseDbContext dbContext,IRedisCache redisCache)
+    public DomainService(IRedisCache redisCache)
     {
         this.redisCache = redisCache;
     }

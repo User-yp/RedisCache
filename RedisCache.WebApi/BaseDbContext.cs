@@ -1,6 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RedisCache.Attributes;
-using System.Reflection;
 
 namespace RedisCache.WebApi;
 [RedisDbContext]

@@ -3,7 +3,6 @@ using Newtonsoft.Json;
 using RedisCache.Attributes;
 using System.Collections.Concurrent;
 using System.Collections;
-using System.Reflection;
 using RedisCache.RedisServe;
 using RedisCache.DbService;
 
@@ -13,12 +12,12 @@ public class RedisCache:IRedisCache
 {
     private readonly IRedisService redisService;
     private readonly CacheContext dBContext;
-    private static Task pollingTask;
+    //private static Task pollingTask;
     private readonly int threhold;
     private readonly bool isPolling;
     private static bool isPollingStarted = false;
     private readonly TimeSpan interval;
-    private readonly List<string> redisKeys = new List<string>();
+    private readonly List<string> redisKeys = AttributesExtension.GetEntityKeys();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new ConcurrentDictionary<string, SemaphoreSlim>();
 
     public RedisCache(IOptionsMonitor<RedisOptions> options, IRedisService redisService, CacheContext dBContext)
@@ -37,8 +36,8 @@ public class RedisCache:IRedisCache
     {
         if (!isPolling || isPollingStarted)
             return;
-
-        pollingTask = Task.Run(async () =>
+        //pollingTask =
+        Task.Run(async () =>
         {
             while (true)
             {
@@ -69,9 +68,7 @@ public class RedisCache:IRedisCache
 
     public async Task AddRedisAsync<T>(T value) where T : class
     {
-        redisKeys.AddKey(typeof(T).Name);
-
-        if (!isPolling)
+        if (!isPolling)//redisKeys.AddKey(typeof(T).Name);
             await WriteDataBase(value);
 
         var redisKey = value.GetRedisKey();
@@ -85,8 +82,7 @@ public class RedisCache:IRedisCache
 
     public async Task AddRedisAsync<T>(List<T> values) where T : class
     {
-        redisKeys.AddKey(typeof(T).Name);
-        if (!isPolling)
+        if (!isPolling)//redisKeys.AddKey(typeof(T).Name);
             await WriteDataBase(values[0]);
 
         foreach (var value in values)
@@ -146,7 +142,7 @@ public class RedisCache:IRedisCache
             listKey.Add(value.Key);
         }
 
-        var insertMethod = dBContext.GetType().GetMethod("InsertDatabase").MakeGenericMethod(type);
+        var insertMethod = dBContext.GetType().GetMethod("InsertDatabase")?.MakeGenericMethod(type);
         var insertTask = (Task)insertMethod.Invoke(dBContext, new[] { listValue });
         await insertTask; // 等待任务完成  
 
