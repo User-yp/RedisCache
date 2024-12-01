@@ -34,32 +34,30 @@ public class RedisCache:IRedisCache
 
     private void PollingThread()
     {
-        if (!isPolling || isPollingStarted)
+        if (!isPolling || isPollingStarted || redisKeys.Count == 0)
             return;
-        //pollingTask =
         Task.Run(async () =>
         {
             while (true)
             {
-                if (redisKeys.Count != 0)
+                var tasks = new List<Task<(bool isSucess, string key)>>();
+                redisKeys.ForEach(async redisKey =>
                 {
-                    redisKeys.ForEach(async redisKey =>
+                    var semaphore = _locks.GetOrAdd(redisKey, _ => new SemaphoreSlim(1, 1));
+                    await semaphore.WaitAsync();
+                    tasks.Add(Task.Run(async () =>
                     {
-                        var semaphore = _locks.GetOrAdd(redisKey, _ => new SemaphoreSlim(1, 1));
-
-                        await semaphore.WaitAsync();
                         try
                         {
-                            await WriteDataBase(redisKey);
+                            return (await WriteDataBase(redisKey), redisKey);
                         }
                         finally
                         {
-                            // Release the semaphore  
-                            semaphore.Release();
+                            semaphore.Release();// Release the semaphore  
                         }
-                    });
-                }
-                Console.WriteLine($"线程{Environment.CurrentManagedThreadId}-PollingThread");
+                    }));
+                });
+                var res = await Task.WhenAll(tasks);
                 await Task.Delay(interval);
             }
         });
