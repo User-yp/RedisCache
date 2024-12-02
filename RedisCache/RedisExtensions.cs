@@ -16,7 +16,7 @@ public static class RedisExtensions
             options.IsPolling = isPolling;
             options.Interval = TimeSpan.FromSeconds(interval);
         });
-        service.AddTransient<CacheContext>();
+        service.AddTransient<ICacheContext, CacheContext>();
         service.AddSingleton<IRedisService, RedisService>();
         service.AddScoped<IRedisCache, RedisCache>();
 

@@ -11,7 +11,7 @@ namespace RedisCache;
 public class RedisCache:IRedisCache
 {
     private readonly IRedisService redisService;
-    private readonly CacheContext dBContext;
+    private readonly ICacheContext dBContext;
     //private static Task pollingTask;
     private readonly int threhold;
     private readonly bool isPolling;
@@ -20,7 +20,7 @@ public class RedisCache:IRedisCache
     private readonly List<string> redisKeys = AttributesExtension.GetEntityKeys();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new ConcurrentDictionary<string, SemaphoreSlim>();
 
-    public RedisCache(IOptionsMonitor<RedisOptions> options, IRedisService redisService, CacheContext dBContext)
+    public RedisCache(IOptionsMonitor<RedisOptions> options, IRedisService redisService, ICacheContext dBContext)
     {
 
         this.redisService = redisService;
@@ -140,7 +140,7 @@ public class RedisCache:IRedisCache
             listKey.Add(value.Key);
         }
 
-        var insertMethod = dBContext.GetType().GetMethod("InsertDatabase")?.MakeGenericMethod(type);
+        var insertMethod = dBContext.GetType().GetMethod("InsertAsync")?.MakeGenericMethod(type);
         var insertTask = (Task)insertMethod.Invoke(dBContext, new[] { listValue });
         await insertTask; // 等待任务完成  
 
@@ -180,7 +180,7 @@ public class RedisCache:IRedisCache
             };
             _events.Add(_EVENT);
         }
-        return await dBContext.InsertDatabase(_events);*/
+        return await dBContext.InsertAsync(_events);*/
         return await Task.FromResult(true);
     }
     public async Task<bool> BatchInsert2Async()
@@ -204,7 +204,7 @@ public class RedisCache:IRedisCache
             };
             _events.Add(_EVENT);
         }
-        return await dBContext.InsertDatabase(_events);*/
+        return await dBContext.InsertAsync(_events);*/
         return false;
     }
 
