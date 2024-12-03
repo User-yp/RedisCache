@@ -17,6 +17,7 @@ public interface IRedisService
     Task<long> GetHashLength(string key);
     IEnumerable<string> GetAllKeys();
     IEnumerable<string> GetAllKeys(EndPoint endPoint);
+    Task<bool> KeyExpireAsync(string key, TimeSpan? expiry);
     Task<bool> KeyExistsAsync(string key);
     Task<long> KeyDeleteAsync(IEnumerable<string> keys);
     Task<bool> KeyDeleteAsync(string keys);

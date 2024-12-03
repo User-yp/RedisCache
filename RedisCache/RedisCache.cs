@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections;
 using RedisCache.RedisServe;
 using RedisCache.DbService;
+using RedisCache.Options;
 
 namespace RedisCache;
 
@@ -12,7 +13,6 @@ public class RedisCache:IRedisCache
 {
     private readonly IRedisService redisService;
     private readonly ICacheContext dBContext;
-    //private static Task pollingTask;
     private readonly int threhold;
     private readonly bool isPolling;
     private static bool isPollingStarted = false;
@@ -59,6 +59,7 @@ public class RedisCache:IRedisCache
                 });
                 var res = await Task.WhenAll(tasks);
                 await Task.Delay(interval);
+                Console.WriteLine($"轮询线程{DateTime.Now}");
             }
         });
         isPollingStarted = true;
@@ -140,8 +141,8 @@ public class RedisCache:IRedisCache
             listKey.Add(value.Key);
         }
 
-        var insertMethod = dBContext.GetType().GetMethod("InsertAsync")?.MakeGenericMethod(type);
-        var insertTask = (Task)insertMethod.Invoke(dBContext, new[] { listValue });
+        var insertMethod = dBContext.GetType().GetMethod("InsertDatabase")?.MakeGenericMethod(type);
+        var insertTask = (Task)insertMethod.Invoke(dBContext, [listValue]);
         await insertTask; // 等待任务完成  
 
         //bool insertResult = (insertTask as dynamic).Result; // 使用 dynamic 来获取结果  

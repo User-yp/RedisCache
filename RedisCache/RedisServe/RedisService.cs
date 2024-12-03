@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
+using RedisCache.Options;
 using StackExchange.Redis;
 using System.Collections.Concurrent;
 using System.Net;
@@ -143,7 +144,10 @@ public class RedisService : IRedisService
         return _conn.GetServer(endPoint).Keys().ToStrings();
     }
 
-
+    public async Task<bool> KeyExpireAsync(string key, TimeSpan? expiry)
+    {
+        return await _db.KeyExpireAsync(key, expiry);
+    }
     public async Task<bool> KeyExistsAsync(string key)
     {
         return await _db.KeyExistsAsync(key);

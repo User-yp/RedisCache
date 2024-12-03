@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace RedisCache.DbService;
+﻿namespace RedisCache.DbService;
 
 public interface ICacheContext
 {
@@ -13,4 +7,5 @@ public interface ICacheContext
     Task<bool> DeletedAsync<T>(T instance) where T : class;
     Task<bool> DeletedAsync<T>(List<T> instances) where T : class;
     Task<List<T>?> GetAllAsync<T>(T instances) where T : class;
+    Task<List<T>?> GetAllByKeyAsync<T>(string key) where T : class;
 }

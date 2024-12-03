@@ -1,4 +1,4 @@
-﻿namespace RedisCache;
+﻿namespace RedisCache.Options;
 
 public class RedisOptions
 {

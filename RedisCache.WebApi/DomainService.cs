@@ -12,7 +12,7 @@ public class DomainService
     {
         Random random = new Random();
         List<TestEntity> entities = new List<TestEntity>(); 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 1; i++)
         {
             var str = random.Next(1000, 9999).ToString();
             TestEntity testEntity = new()

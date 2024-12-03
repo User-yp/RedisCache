@@ -64,4 +64,13 @@ public class CacheContext: ICacheContext
         return values;
 
     }
+    public async Task<List<T>?> GetAllByKeyAsync<T>(string key) where T : class
+    {
+        (var dbContextType, var dbSetType) = key.GetRedisDbSetByKey<T>();
+        using var dbContext = (DbContext)Activator.CreateInstance(dbContextType);
+        var dbSet = (DbSet<T>)dbSetType.GetValue(dbContext);
+        var values = dbSet?.ToList();
+        return values;
+
+    }
 }
