@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Net;
 
 namespace RedisCache.RedisServe;
 
@@ -15,8 +14,8 @@ public interface IRedisService
     Task<bool> HashDeleteAsync(string key);
     Task<bool> HashDeleteFieldsAsync(string key, IEnumerable<string> fields);
     Task<long> GetHashLength(string key);
-    IEnumerable<string> GetAllKeys();
-    IEnumerable<string> GetAllKeys(EndPoint endPoint);
+   /* IEnumerable<string> GetAllKeys();
+    IEnumerable<string> GetAllKeys(EndPoint endPoint);*/
     Task<bool> KeyExpireAsync(string key, TimeSpan? expiry);
     Task<bool> KeyExistsAsync(string key);
     Task<long> KeyDeleteAsync(IEnumerable<string> keys);

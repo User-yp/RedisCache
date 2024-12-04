@@ -61,20 +61,12 @@ public static class AttributesExtension
         return enrityType;
     }
 
+    //从实例对象获取DbSet
     public static (Type, PropertyInfo) GetRedisDbSet<T>(this T instance)
     {
-        Type type = typeof(T);
-        var dbContextType = dbContextTypes.FirstOrDefault(t => t.GetProperties()
-                .Any(t => t.PropertyType == typeof(DbSet<>).MakeGenericType(type)))
-            ?? throw new ArgumentException($" has no DBContext Attributed '[RedisDbSet]'");
-
-        var dbSetType = dbContextType.GetProperties().FirstOrDefault(p => p.PropertyType == typeof(DbSet<>).MakeGenericType(type))
-            ?? throw new ArgumentException($" There is no {type} type DbSet<{type}>");
-        return (dbContextType, dbSetType);
-    }
-    public static (Type, PropertyInfo) GetRedisDbSetByKey<T>(this string key)
-    {
-        var type = entityTypes.FirstOrDefault(t => t.Name == key);
+        var type = typeof(T);
+        if (type == typeof(string))
+            type = entityTypes.FirstOrDefault(t => t.Name == instance?.ToString());
         var dbContextType = dbContextTypes.FirstOrDefault(t => t.GetProperties()
                 .Any(t => t.PropertyType == typeof(DbSet<>).MakeGenericType(type)))
             ?? throw new ArgumentException($" has no DBContext Attributed '[RedisDbSet]'");

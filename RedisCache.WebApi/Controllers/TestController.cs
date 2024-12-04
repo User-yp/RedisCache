@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using RedisCache.DbService;
-using System.Diagnostics.SymbolStore;
+using RedisCache.ReadService;
 
 namespace RedisCache.WebApi.Controllers;
 
@@ -10,14 +10,14 @@ namespace RedisCache.WebApi.Controllers;
 public class TestController:ControllerBase
 {
     private readonly DomainService domain;
-    private readonly ICacheContext cacheContext;
-    private readonly LRUCache lruCache;
+    private readonly IDBContext dBContext;
+    private readonly IReadCache readCache;
 
-    public TestController(DomainService domain,ICacheContext cacheContext,LRUCache lruCache)
+    public TestController(DomainService domain,IDBContext dBContext, IReadCache readCache)
     {
         this.domain = domain;
-        this.cacheContext = cacheContext;
-        this.lruCache = lruCache;
+        this.dBContext = dBContext;
+        this.readCache = readCache;
     }
 
     [HttpPost]
@@ -27,17 +27,17 @@ public class TestController:ControllerBase
         return Ok();
     }
     [HttpGet]
-    public async Task<ActionResult<List<TestEntity>>> CacheContextTestAsync()
+    public async Task<ActionResult> CacheContextTestAsync()
     {
-        return await cacheContext.GetAllByKeyAsync<TestEntity>(nameof(TestEntity));
-        //return Ok();
+         await dBContext.GetAllAsync(typeof(TestEntity).Name);
+        return Ok();
     }
     [HttpGet]
     public async Task<ActionResult> LRUCacheTestAsync()
     {
         var str = "FD84DD5E-F3FA-4AB2-92B0-EEEA8F2991D1".ToLower();
         List<string> strings = [str];
-         await lruCache.GetAsync<TestEntity>(nameof(TestEntity),JsonConvert.SerializeObject(strings));
+         await readCache.GetAsync<TestEntity>(nameof(TestEntity),JsonConvert.SerializeObject(strings));
         return Ok();
     }
 }

@@ -1,12 +1,14 @@
-﻿namespace RedisCache.WebApi;
+﻿using RedisCache.WriteService;
+
+namespace RedisCache.WebApi;
 
 public class DomainService
 {
-    private readonly IRedisCache redisCache;
+    private readonly IWriteCache writeCache;
 
-    public DomainService(IRedisCache redisCache)
+    public DomainService(IWriteCache writeCache)
     {
-        this.redisCache = redisCache;
+        this.writeCache = writeCache;
     }
     public async Task AddTestEntityAsync()
     {
@@ -23,8 +25,8 @@ public class DomainService
                 Type = DateTime.Now.ToString()
             };
             entities.Add(testEntity);
-            await redisCache.AddRedisAsync(testEntity);
+            await writeCache.AddRedisAsync(testEntity);
         }
-        //await redisCache.AddRedisAsync(entities);
+        //await writeCache.AddRedisAsync(entities);
     }
 }

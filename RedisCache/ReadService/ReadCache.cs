@@ -1,27 +1,28 @@
 ﻿using Microsoft.Extensions.Options;
 using RedisCache.Attributes;
+using RedisCache.DbService;
+using RedisCache.Middel;
 using RedisCache.Options;
-using RedisCache.RedisServe;
 
-namespace RedisCache.DbService;
+namespace RedisCache.ReadService;
 
-public class LRUCache
+public class ReadCache : IReadCache
 {
     private readonly int _capacity;
     private readonly TimeSpan _expiryTime;
     private readonly Dictionary<string, List<string>> _cacheMap;
     private readonly LinkedList<string> _lruList;
-    private readonly IRedisService redis;
-    private readonly ICacheContext cacheContext;
+    private readonly IReadRedis readRedis;
+    private readonly IDBContext dBContext;
 
-    public LRUCache(IOptionsMonitor<LRUOptions> options, IRedisService redis, ICacheContext cacheContext)
+    public ReadCache(IOptionsMonitor<ReadCacheOption> options, IReadRedis readRedis, IDBContext dBContext)
     {
         _capacity = options.CurrentValue.Capacity;
         _expiryTime = TimeSpan.FromSeconds(options.CurrentValue.ExpiryTime);
         _cacheMap = new Dictionary<string, List<string>>(_capacity);
         _lruList = new LinkedList<string>();
-        this.redis = redis;
-        this.cacheContext = cacheContext;
+        this.readRedis = readRedis;
+        this.dBContext = dBContext;
     }
 
     public async Task<string?> GetAsync<T>(string key, string fieldKey) where T : class
@@ -36,16 +37,16 @@ public class LRUCache
                 _lruList.Remove(key);
                 _lruList.AddFirst(key);
                 //刷新Redis过期时间
-                await redis.KeyExpireAsync(key, _expiryTime);
+                await readRedis.KeyExpireAsync(key, _expiryTime);
                 //从Redis获取值
-                var fieldValue = await redis.HashGetFieldsAsync(key, [fieldKey]);
+                var fieldValue = await readRedis.HashGetFieldsAsync(key, [fieldKey]);
                 return fieldValue[fieldKey];
             }
             //todo:若未找到，缓存穿透
         }
         else
         {
-            var valueFromDb = await cacheContext.GetAllByKeyAsync<T>(key);
+            var valueFromDb = await dBContext.GetAllAsync(key);
             var keys = valueFromDb.GetRedisKey();
             if (keys.Contains(fieldKey))
             {
@@ -63,7 +64,7 @@ public class LRUCache
             node.AddRange(keys);
             _lruList.Remove(key);
             _lruList.AddFirst(key);
-            await redis.KeyExpireAsync(key, _expiryTime);
+            await readRedis.KeyExpireAsync(key, _expiryTime);
         }
         else
         {
@@ -75,14 +76,14 @@ public class LRUCache
                 {
                     _lruList.RemoveLast();
                     _cacheMap.Remove(lastNode.Value);
-                    await redis.KeyDeleteAsync([lastNode.Value]);
+                    await readRedis.KeyDeleteAsync([lastNode.Value]);
                 }
             }
             // 添加新项  
             var newNode = new LinkedListNode<string>(key);
             _lruList.AddFirst(newNode);
             _cacheMap[key] = keys;
-            var valueFromDb = await cacheContext.GetAllAsync(key.GetRedisEntity());
+            var valueFromDb = await dBContext.GetAllAsync(key.GetRedisEntity());
             Type type = key.GetRedisEntity();
             //await redisCache.AddRedisAsync<type>(valueFromDb);
         }

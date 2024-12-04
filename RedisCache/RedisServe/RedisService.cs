@@ -1,54 +1,61 @@
-﻿using Microsoft.Extensions.Options;
-using RedisCache.Options;
-using StackExchange.Redis;
+﻿using StackExchange.Redis;
 using System.Collections.Concurrent;
-using System.Net;
 using IDatabase = StackExchange.Redis.IDatabase;
 
 namespace RedisCache.RedisServe;
 
 public class RedisService : IRedisService
 {
-    private readonly ConnectionMultiplexer _conn;
-    private readonly IDatabase _db;
+    //private readonly ConnectionMultiplexer _conn;
+    private readonly IDatabase database;
+    /*private readonly IDatabase _readDb;
+    private readonly IDatabase database;*/
 
-    public RedisService(IOptionsMonitor<RedisOptions> options) : this(options.CurrentValue)
+    public RedisService(IDatabase database)
+    {
+        this.database = database;
+    }
+    /*public RedisService(IOptionsMonitor<WriteCacheOption> options) : this(options.CurrentValue)
     {
     }
 
-    public RedisService(RedisOptions options)
+    public RedisService(WriteCacheOption options)
     {
         var connectionString = options.ConnectionString;
         _conn = ConnectionMultiplexer.Connect(connectionString);
 
-        var dbNumber = options.DbNumber;
-        _db = _conn.GetDatabase(dbNumber);
-    }
+        var writeDbNumber = options.ReadDbNumber;
+        database = _conn.GetDatabase(writeDbNumber);
+
+        var readDbNumber = options.ReadDbNumber;
+        _readDb =_conn.GetDatabase(readDbNumber);
+    }*/
+
 
 
     public async Task<bool> StringSetAsync<T>(string key, T value)
     {
-        return await _db.StringSetAsync(key, value.ToRedisValue());
+        return await database.StringSetAsync(key, value.ToRedisValue());
     }
 
     #region Hash
 
     public async Task<ConcurrentDictionary<string, string>> HashGetAsync(string key)
     {
-        return (await _db.HashGetAllAsync(key)).ToConcurrentDictionary();
+        return (await database.HashGetAllAsync(key)).ToConcurrentDictionary();
     }
 
 
     public async Task<ConcurrentDictionary<string, string>> HashGetFieldsAsync(string key, IEnumerable<string> fields)
     {
-        return (await _db.HashGetAsync(key, fields.ToRedisValues())).ToConcurrentDictionary(fields);
+        return (await database.HashGetAsync(key, fields.ToRedisValues())).ToConcurrentDictionary(fields);
     }
 
     public async Task HashSetAsync(string key, ConcurrentDictionary<string, string> entries)
     {
         var val = entries.ToHashEntries();
         if (val != null)
-            await _db.HashSetAsync(key, val);
+            await database.HashSetAsync(key, val);
     }
 
 
@@ -116,7 +123,7 @@ public class RedisService : IRedisService
         var success = true;
         foreach (var field in fields)
         {
-            if (!await _db.HashDeleteAsync(key, field))
+            if (!await database.HashDeleteAsync(key, field))
                 success = false;
         }
         return success;
@@ -130,9 +137,9 @@ public class RedisService : IRedisService
     {
         if (!await KeyExistsAsync(key))
             return 0;
-        return await _db.HashLengthAsync(key);
+        return await database.HashLengthAsync(key);
     }
-    public IEnumerable<string> GetAllKeys()
+    /*public IEnumerable<string> GetAllKeys()
     {
         return _conn.GetEndPoints().Select(endPoint => _conn.GetServer(endPoint))
             .SelectMany(server => server.Keys().ToStrings());
@@ -142,27 +149,27 @@ public class RedisService : IRedisService
     public IEnumerable<string> GetAllKeys(EndPoint endPoint)
     {
         return _conn.GetServer(endPoint).Keys().ToStrings();
-    }
+    }*/
 
     public async Task<bool> KeyExpireAsync(string key, TimeSpan? expiry)
     {
-        return await _db.KeyExpireAsync(key, expiry);
+        return await database.KeyExpireAsync(key, expiry);
     }
     public async Task<bool> KeyExistsAsync(string key)
     {
-        return await _db.KeyExistsAsync(key);
+        return await database.KeyExistsAsync(key);
     }
 
 
     public async Task<long> KeyDeleteAsync(IEnumerable<string> keys)
     {
-        return await _db.KeyDeleteAsync(keys.Select(k => (RedisKey)k).ToArray());
+        return await database.KeyDeleteAsync(keys.Select(k => (RedisKey)k).ToArray());
     }
 
 
     public async Task<bool> KeyDeleteAsync(string key)
     {
-        return await _db.KeyDeleteAsync(key);
+        return await database.KeyDeleteAsync(key);
     }
     #endregion
 

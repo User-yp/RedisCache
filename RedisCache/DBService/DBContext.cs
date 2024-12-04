@@ -1,13 +1,13 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RedisCache.Attributes;
-using System.Reflection;
+using RedisCache.DbService;
 
-namespace RedisCache.DbService;
+namespace RedisCache.DBService;
 
-public class CacheContext: ICacheContext
+public class DBContext : IDBContext
 {
-    public CacheContext() { }
-    public async Task<bool> InsertAsync<T>(T values) where T : class
+    public DBContext() { }
+    /*public async Task<bool> InsertAsync<T>(params T[] values) where T : class
     {
         (var dbContextType, var dbSetType) = values.GetRedisDbSet();
 
@@ -21,8 +21,8 @@ public class CacheContext: ICacheContext
             await dbContext.SaveChangesAsync();
         }
         return await Task.FromResult(true);
-    }
-    public async Task<bool> InsertDatabase<T>(List<T> values) where T : class
+    }*/
+    public async Task<bool> InsertDatabase<T>(params T[] values) where T : class
     {
         (var dbContextType, var dbSetType) = values[0].GetRedisDbSet();
         using (var dbContext = (DbContext)Activator.CreateInstance(dbContextType))
@@ -33,7 +33,7 @@ public class CacheContext: ICacheContext
         }
         return await Task.FromResult(true);
     }
-    public async Task<bool> DeletedAsync<T>(T instance) where T : class
+    /*public async Task<bool> DeletedAsync<T>(T instance) where T : class
     {
         (var dbContextType, var dbSetType) = instance.GetRedisDbSet();
         using (var dbContext = (DbContext)Activator.CreateInstance(dbContextType))
@@ -43,8 +43,8 @@ public class CacheContext: ICacheContext
             await dbContext.SaveChangesAsync();
         }
         return await Task.FromResult(true);
-    }
-    public async Task<bool> DeletedAsync<T>(List<T> instances) where T : class
+    }*/
+    public async Task<bool> DeletedAsync<T>(params T[] instances) where T : class
     {
         (var dbContextType, var dbSetType) = instances.GetRedisDbSet();
         using (var dbContext = (DbContext)Activator.CreateInstance(dbContextType))
@@ -64,13 +64,13 @@ public class CacheContext: ICacheContext
         return values;
 
     }
-    public async Task<List<T>?> GetAllByKeyAsync<T>(string key) where T : class
+    /*public async Task<List<T>?> GetAllByKeyAsync<T>(string key) where T : class
     {
-        (var dbContextType, var dbSetType) = key.GetRedisDbSetByKey<T>();
+        (var dbContextType, var dbSetType) = key.GetRedisDbSet();
         using var dbContext = (DbContext)Activator.CreateInstance(dbContextType);
         var dbSet = (DbSet<T>)dbSetType.GetValue(dbContext);
         var values = dbSet?.ToList();
         return values;
 
-    }
+    }*/
 }

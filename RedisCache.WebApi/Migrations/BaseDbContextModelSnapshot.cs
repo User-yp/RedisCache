@@ -22,7 +22,7 @@ namespace RedisCache.WebApi.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("RedisCache.WebApi.TestEntity", b =>
+            modelBuilder.Entity("WriteCacheOption.WebApi.TestEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
