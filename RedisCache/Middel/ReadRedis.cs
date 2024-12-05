@@ -7,13 +7,13 @@ namespace RedisCache.Middel;
 
 public class ReadRedis : RedisService, IReadRedis
 {
-    public ReadRedis(IOptionsMonitor<ReadCacheOption> options, Func<int, IDatabase> getDatabase)
-        : this(options.CurrentValue.ReadDbNumber, getDatabase)
+    public ReadRedis(IOptionsMonitor<ReadCacheOption> options, Func<int, IDatabase> getDatabase, IConnectionMultiplexer conn)
+        : this(options.CurrentValue.ReadDbNumber, getDatabase, conn)
     {
     }
 
-    public ReadRedis(int dbNumber, Func<int, IDatabase> getDatabase)
-        : base(getDatabase(dbNumber)) // 使用传入的 Func 来获取 IDatabase  
+    public ReadRedis(int dbNumber, Func<int, IDatabase> getDatabase, IConnectionMultiplexer conn)
+        : base(getDatabase(dbNumber),conn) // 使用传入的 Func 来获取 IDatabase  
     {
     }
 }

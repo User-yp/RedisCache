@@ -5,7 +5,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 
 builder.Services.AddRedisService("127.0.0.1", 2, 2, true, 5,3,6,300);
-//builder.Services.AddLRUService(10, 60);
 builder.Services.AddDbContext<BaseDbContext>();
 builder.Services.AddScoped<DomainService>();
 builder.Services.AddControllers();

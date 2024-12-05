@@ -29,15 +29,15 @@ public class TestController:ControllerBase
     [HttpGet]
     public async Task<ActionResult> CacheContextTestAsync()
     {
-         await dBContext.GetAllAsync(typeof(TestEntity).Name);
+         await dBContext.GetAllAsync<TestEntity>(typeof(TestEntity).Name);
         return Ok();
     }
     [HttpGet]
     public async Task<ActionResult> LRUCacheTestAsync()
     {
-        var str = "FD84DD5E-F3FA-4AB2-92B0-EEEA8F2991D1".ToLower();
+        var str = "9B428F9E-6B3A-43C5-B511-077595906E25".ToLower();
         List<string> strings = [str];
-         await readCache.GetAsync<TestEntity>(nameof(TestEntity),JsonConvert.SerializeObject(strings));
+        var res= await readCache.GetAsync<TestEntity>(nameof(TestEntity),JsonConvert.SerializeObject(strings));
         return Ok();
     }
 }

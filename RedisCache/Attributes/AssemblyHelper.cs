@@ -4,7 +4,7 @@ using System.Reflection.PortableExecutable;
 using System.Reflection;
 using System.Reflection.Metadata;
 
-namespace RedisCache;
+namespace RedisCache.Attributes;
 
 public static class AssemblyHelper
 {

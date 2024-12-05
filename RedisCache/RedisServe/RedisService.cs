@@ -1,37 +1,20 @@
 ﻿using StackExchange.Redis;
 using System.Collections.Concurrent;
+using System.Net;
 using IDatabase = StackExchange.Redis.IDatabase;
 
 namespace RedisCache.RedisServe;
 
 public class RedisService : IRedisService
 {
-    //private readonly ConnectionMultiplexer _conn;
     private readonly IDatabase database;
-    /*private readonly IDatabase _readDb;
-    private readonly IDatabase database;*/
+    private readonly IConnectionMultiplexer conn;
 
-    public RedisService(IDatabase database)
+    public RedisService(IDatabase database,IConnectionMultiplexer conn)
     {
         this.database = database;
+        this.conn = conn;
     }
-    /*public RedisService(IOptionsMonitor<WriteCacheOption> options) : this(options.CurrentValue)
-    {
-    }
-
-    public RedisService(WriteCacheOption options)
-    {
-        var connectionString = options.ConnectionString;
-        _conn = ConnectionMultiplexer.Connect(connectionString);
-
-        var writeDbNumber = options.ReadDbNumber;
-        database = _conn.GetDatabase(writeDbNumber);
-
-        var readDbNumber = options.ReadDbNumber;
-        _readDb =_conn.GetDatabase(readDbNumber);
-    }*/
-
-
 
     public async Task<bool> StringSetAsync<T>(string key, T value)
     {
@@ -139,17 +122,17 @@ public class RedisService : IRedisService
             return 0;
         return await database.HashLengthAsync(key);
     }
-    /*public IEnumerable<string> GetAllKeys()
+    public IEnumerable<string> GetAllKeys()
     {
-        return _conn.GetEndPoints().Select(endPoint => _conn.GetServer(endPoint))
+        return conn.GetEndPoints().Select(endPoint => conn.GetServer(endPoint))
             .SelectMany(server => server.Keys().ToStrings());
     }
 
 
     public IEnumerable<string> GetAllKeys(EndPoint endPoint)
     {
-        return _conn.GetServer(endPoint).Keys().ToStrings();
-    }*/
+        return conn.GetServer(endPoint).Keys().ToStrings();
+    }
 
     public async Task<bool> KeyExpireAsync(string key, TimeSpan? expiry)
     {

@@ -6,14 +6,12 @@ namespace RedisCache.Attributes;
 
 public static class AttributesExtension
 {
-    //private static readonly IEnumerable<Assembly> assemblies = AssemblyHelper.GetAllReferencedAssemblies();
     private static readonly List<Type> entityTypes = GetEntityType();
     private static readonly List<Type> dbContextTypes = GetDbContextType();
-    
 
     public static string GetRedisKey<T>(this T instance)
     {
-        Type type = typeof(T);
+        var type = typeof(T);
         var propInfos = type.GetProperties()
             .Where(prop => Attribute.IsDefined(prop, typeof(RedisKeyAttribute)))
             .ToList();
@@ -21,7 +19,7 @@ public static class AttributesExtension
         if (propInfos.Count == 0)
             throw new ArgumentException($"type of '{type}' has no Properties Attributed '[RedisKey]'");
 
-        List<string> redisKey = new List<string>();
+        var redisKey = new List<string>();
 
         foreach (var propInfo in propInfos)
         {
@@ -30,9 +28,9 @@ public static class AttributesExtension
         }
         return JsonConvert.SerializeObject(redisKey);
     }
-    public static List<string> GetRedisKey<T>(this List<T> instances)
+    public static List<string> GetRedisKeys<T>(this List<T> instances)
     {
-        Type type = typeof(T);
+        var type = typeof(T);
         var propInfos = type.GetProperties()
             .Where(prop => Attribute.IsDefined(prop, typeof(RedisKeyAttribute)))
             .ToList();
@@ -40,11 +38,11 @@ public static class AttributesExtension
         if (propInfos.Count == 0)
             throw new ArgumentException($"type of '{type}' has no Properties Attributed '[RedisKey]'");
 
-        List<string> redisKeys = new List<string>();
+        var redisKeys = new List<string>();
 
         foreach (var instance in instances)
         {
-            List<string> redisKey = new List<string>();
+            var redisKey = new List<string>();
             foreach (var propInfo in propInfos)
             {
                 var value = propInfo.GetValue(instance)?.ToString();
@@ -77,12 +75,7 @@ public static class AttributesExtension
     }
     public static List<string> GetEntityKeys()
     {
-        List<string> keys = new List<string>();
-        /*var assemblies = AssemblyHelper.GetAllReferencedAssemblies().ToList();
-        var entityTypes = assemblies.SelectMany(a => a.GetTypes())
-                .Where(t => t.IsClass && !t.IsAbstract
-                && t.GetCustomAttributes(typeof(RedisEntityAttribute), false).Length != 0)
-                .ToList();*/
+        var keys = new List<string>();
         foreach (var entityType in entityTypes)
         {
             if (!keys.Contains(entityType.Name))
