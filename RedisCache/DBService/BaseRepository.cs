@@ -2,7 +2,7 @@
 
 namespace RedisCache.DBService;
 
-public abstract class BaseRepository<T> : IBaseRepository<T> where T : AggregateRootEntity
+public abstract class BaseRepository<T> : IBaseRepository<T> where T : RootEntity
 {
     private readonly DbSet<T> dbSet;
 

@@ -1,7 +1,10 @@
-﻿namespace RedisCache.WriteService;
+﻿using RedisCache.DBService;
+
+namespace RedisCache.WriteService;
 
 public interface IWriteCache
 {
-    Task AddRedisAsync<T>(T value) where T : class;
-    Task AddRedisAsync<T>(List<T> values) where T : class;
+    Task<T?> GetOneAsync<T>(string key, string redisKey) where T : RootEntity;
+    Task AddRedisAsync<T>(T value) where T : RootEntity;
+    Task AddRedisAsync<T>(List<T> values) where T : RootEntity;
 }

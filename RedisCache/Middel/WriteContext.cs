@@ -1,6 +1,4 @@
-﻿
-
-namespace RedisCache.Middel;
+﻿namespace RedisCache.Middel;
 
 internal class WriteContext
 {

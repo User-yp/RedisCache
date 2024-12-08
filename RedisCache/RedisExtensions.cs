@@ -18,14 +18,14 @@ public static class RedisExtensions
     {
         // 注册ConnectionMultiplexer为单例 
         service.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(connStr));
-        service.AddScoped<Func<int, IDatabase>>(provider =>
+        service.AddSingleton<Func<int, IDatabase>>(provider =>
         {
             var multiplexer = provider.GetRequiredService<IConnectionMultiplexer>();
             return dbNum => multiplexer.GetDatabase(dbNum); // 返回一个方法，用于获取指定数据库  
         });
         // 注册IDatabase实例  
-        service.AddScoped(provider => provider.GetRequiredService<Func<int, IDatabase>>()(writeDbNumber));
-        service.AddScoped(provider => provider.GetRequiredService<Func<int, IDatabase>>()(readDbNumber));
+        service.AddSingleton(provider => provider.GetRequiredService<Func<int, IDatabase>>()(writeDbNumber));
+        service.AddSingleton(provider => provider.GetRequiredService<Func<int, IDatabase>>()(readDbNumber));
 
         service.Configure((WriteCacheOption options) =>
         {
@@ -41,12 +41,12 @@ public static class RedisExtensions
             options.ExpiryTime = expiryTime;
         });
         service.AddMediatR();
-        service.AddScoped<IDBContext, DBContext>();
-        service.AddScoped<IRedisService, RedisService>();
-        service.AddScoped<IReadRedis, ReadRedis>();
-        service.AddScoped<IWriteRedis, WriteRedis>();
-        service.AddScoped<IReadCache,ReadCache>();
-        service.AddScoped<IWriteCache, WriteCache>();
+        service.AddSingleton<IDBContext, DBContext>();
+        service.AddSingleton<IRedisService, RedisService>();
+        service.AddSingleton<IReadRedis, ReadRedis>();
+        service.AddSingleton<IWriteRedis, WriteRedis>();
+        service.AddSingleton<IReadCache,ReadCache>();
+        service.AddSingleton<IWriteCache, WriteCache>();
 
         return service;
     }

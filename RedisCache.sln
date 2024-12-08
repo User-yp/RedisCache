@@ -3,9 +3,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.11.35222.181
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedisCache", "RedisCache\RedisCache.csproj", "{7D4F13C5-81FE-42C7-92D0-8C79A981A7F6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RedisCache", "RedisCache\RedisCache.csproj", "{7D4F13C5-81FE-42C7-92D0-8C79A981A7F6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedisCache.WebApi", "RedisCache.WebApi\RedisCache.WebApi.csproj", "{8E397C06-D65F-4A0E-9F35-A25306FD4D85}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RedisCache.WebApi", "RedisCache.WebApi\RedisCache.WebApi.csproj", "{8E397C06-D65F-4A0E-9F35-A25306FD4D85}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedisCache.Domain", "RedisCache.Domain\RedisCache.Domain.csproj", "{E2317A89-7B04-45A1-86F3-EBD8989293CE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedisCache.Infrastructure", "RedisCache.Infrastructure\RedisCache.Infrastructure.csproj", "{A5DF236E-4FE8-48F2-98DE-96CE2FF8EAF5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +25,14 @@ Global
 		{8E397C06-D65F-4A0E-9F35-A25306FD4D85}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8E397C06-D65F-4A0E-9F35-A25306FD4D85}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8E397C06-D65F-4A0E-9F35-A25306FD4D85}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E2317A89-7B04-45A1-86F3-EBD8989293CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E2317A89-7B04-45A1-86F3-EBD8989293CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E2317A89-7B04-45A1-86F3-EBD8989293CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E2317A89-7B04-45A1-86F3-EBD8989293CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A5DF236E-4FE8-48F2-98DE-96CE2FF8EAF5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A5DF236E-4FE8-48F2-98DE-96CE2FF8EAF5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A5DF236E-4FE8-48F2-98DE-96CE2FF8EAF5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A5DF236E-4FE8-48F2-98DE-96CE2FF8EAF5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -6,6 +6,7 @@ using System.Collections;
 using RedisCache.DbService;
 using RedisCache.Options;
 using RedisCache.Middel;
+using RedisCache.DBService;
 
 namespace RedisCache.WriteService;
 
@@ -22,7 +23,6 @@ public class WriteCache : IWriteCache
 
     public WriteCache(IOptionsMonitor<WriteCacheOption> options, IWriteRedis writeRedis, IDBContext dBContext)
     {
-
         this.writeRedis = writeRedis;
         this.dBContext = dBContext;
         threhold = options.CurrentValue.Threhold;
@@ -64,8 +64,19 @@ public class WriteCache : IWriteCache
         });
         isPollingStarted = true;
     }
+    public async Task<T?> GetOneAsync<T>(string key,string redisKey) where T : RootEntity
+    {
+        /*if(!await writeRedis.KeyExistsAsync(key))
+            return default(T?);*/
+        if (!await writeRedis.KeyExistsAsync(key))
+            return null;
+        var res= await writeRedis.HashGetFieldsAsync(key, [redisKey]);
+        if(res==null)
+            return null;
+        return JsonConvert.DeserializeObject<T>(res[redisKey]);
+    }
 
-    public async Task AddRedisAsync<T>(T value) where T : class
+    public async Task AddRedisAsync<T>(T value) where T : RootEntity
     {
         if (!isPolling)//redisKeys.AddKey(typeof(T).Name);
             await WriteDataBase(value);
@@ -79,7 +90,7 @@ public class WriteCache : IWriteCache
         Console.WriteLine($"{Environment.CurrentManagedThreadId}-写入redis-{JsonConvert.SerializeObject(value)}");
     }
 
-    public async Task AddRedisAsync<T>(List<T> values) where T : class
+    public async Task AddRedisAsync<T>(List<T> values) where T : RootEntity
     {
         if (!isPolling)//redisKeys.AddKey(typeof(T).Name);
             await WriteDataBase(values[0]);
@@ -94,7 +105,7 @@ public class WriteCache : IWriteCache
             });
         }
     }
-    private async Task<bool> WriteDataBase<T>(T Tkey) where T : class
+    private async Task<bool> WriteDataBase<T>(T Tokey) where T : RootEntity
     {
 
         if (await GetCountAsync(typeof(T).Name) < threhold)

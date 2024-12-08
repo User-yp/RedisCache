@@ -15,8 +15,3 @@ public class RedisDbContextAttribute : Attribute
 {
     public RedisDbContextAttribute() { }
 }
-[AttributeUsage(AttributeTargets.Property)]
-public class RedisDbSetAttribute : Attribute
-{
-    public RedisDbSetAttribute() { }
-}

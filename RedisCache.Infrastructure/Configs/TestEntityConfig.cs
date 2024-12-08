@@ -1,7 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using RedisCache.Domain.Entity;
 
-namespace RedisCache.WebApi;
+namespace RedisCache.Infrastructure.Configs;
 
 public class TestEntityConfig : IEntityTypeConfiguration<TestEntity>
 {
