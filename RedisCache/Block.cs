@@ -4,12 +4,12 @@ using System.Threading.Tasks.Dataflow;
 namespace RedisCache;
 
 /// <summary>
-/// 数据刷盘委托 — 当 Redis Hash 达到阈值时触发。
+/// 数据刷盘委托
 /// </summary>
-/// <param name="serviceProvider">应用的根 IServiceProvider，可用于创建 Scope 解析 Scoped 服务（如 DbContext）</param>
-/// <param name="key">Redis Hash key（对应实体类型名）</param>
+/// <param name="serviceProvider">根 IServiceProvider，用于创建 Scope</param>
+/// <param name="key">Redis Hash key（实体类型名）</param>
 /// <param name="entities">待写入数据库的实体列表</param>
-/// <returns>true 表示刷盘成功（将删除 Redis 数据）；false 表示失败（保留数据等待重试）</returns>
+/// <returns>true 表示刷盘成功；false 表示失败</returns>
 public delegate Task<bool> RedisFlushHandler(IServiceProvider serviceProvider, string key, List<object> entities);
 
 /// <summary>
@@ -17,6 +17,18 @@ public delegate Task<bool> RedisFlushHandler(IServiceProvider serviceProvider, s
 /// </summary>
 internal class Block
 {
+    /// <summary>ActionBlock 缓冲区上限（防止内存无限堆积）</summary>
+    private const int BoundedCapacity = 10000;
+
+    /// <summary>ActionBlock 最大并行度</summary>
+    private const int MaxParallelism = 20;
+
+    /// <summary>重试块最大并行度</summary>
+    private const int RetryMaxParallelism = 5;
+
+    /// <summary>重试延迟（毫秒）</summary>
+    private const int RetryDelayMs = 500;
+
     public Func<object, Task> WriteRedisFunc { get; }
     public Func<string, Task<bool>> WriteDataBaseFunc { get; }
     public ConcurrentDictionary<string, ActionBlock<object>> ActionBlocks { get; }
@@ -32,10 +44,11 @@ internal class Block
         RetryBlock = new ActionBlock<object>(async value =>
         {
             await WriteRedisFunc(value);
-            await Task.Delay(500);
+            await Task.Delay(RetryDelayMs);
         }, new ExecutionDataflowBlockOptions
         {
-            MaxDegreeOfParallelism = 5
+            MaxDegreeOfParallelism = RetryMaxParallelism,
+            BoundedCapacity = BoundedCapacity
         });
 
         ActionBlocks = new ConcurrentDictionary<string, ActionBlock<object>>();
@@ -43,18 +56,24 @@ internal class Block
         Locks = new ConcurrentDictionary<string, SemaphoreSlim>();
     }
 
+    /// <summary>
+    /// 获取或创建指定 key 的 ActionBlock
+    /// </summary>
     public ActionBlock<object> GetBlock(string key)
     {
         return ActionBlocks.GetOrAdd(key, _ =>
         {
             return new ActionBlock<object>(WriteRedisFunc, new ExecutionDataflowBlockOptions
             {
-                MaxDegreeOfParallelism = 20,
-                BoundedCapacity = DataflowBlockOptions.Unbounded
+                MaxDegreeOfParallelism = MaxParallelism,
+                BoundedCapacity = BoundedCapacity // 限流：缓冲区满时 SendAsync 返回 false
             });
         });
     }
 
+    /// <summary>
+    /// 轮询刷盘 — SemaphoreSlim 保证同一 key 同一时刻只有一个刷盘操作
+    /// </summary>
     public async Task DoPollingAsync(string redisKey)
     {
         var semaphore = Locks.GetOrAdd(redisKey, _ => new SemaphoreSlim(1, 1));

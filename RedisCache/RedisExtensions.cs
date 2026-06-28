@@ -32,7 +32,8 @@ public static class RedisExtensions
     /// {
     ///     using var scope = sp.CreateScope();
     ///     var db = scope.ServiceProvider.GetRequiredService&lt;MyDbContext&gt;();
-    ///     db.Set&lt;MyEntity&gt;().AddRange(entities.Cast&lt;MyEntity&gt;());
+    ///     // EF Core 自动根据 entity 的 CLR 类型路由到对应 DbSet
+    ///     db.AddRange(entities);
     ///     await db.SaveChangesAsync();
     ///     return true;
     /// });

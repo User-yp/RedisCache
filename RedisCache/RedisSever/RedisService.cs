@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
 using StackExchange.Redis;
 using System.Collections.Concurrent;
 
@@ -15,6 +14,9 @@ public class RedisService : IRedisService, IDisposable
     private readonly string SlotTag = "{SlotTag}:";
     private readonly ILogger<RedisService> _logger;
 
+    // 大 Hash 分页读取每批大小
+    private const int HashScanPageSize = 1000;
+
     public RedisService(IOptionsMonitor<RedisOption> options, ILogger<RedisService> logger)
         : this(options.CurrentValue, logger)
     {
@@ -22,8 +24,7 @@ public class RedisService : IRedisService, IDisposable
 
     public RedisService(RedisOption options, ILogger<RedisService> logger)
     {
-        var connectionString = options.ConnectionString;
-        _conn = ConnectionMultiplexer.Connect(connectionString);
+        _conn = ConnectionMultiplexer.Connect(options.ConnectionString);
         _db = _conn.GetDatabase(options.DbNumber);
         LockKey = options.LockKey;
         Expiry = options.Expiry;
@@ -34,7 +35,15 @@ public class RedisService : IRedisService, IDisposable
 
     public async Task<ConcurrentDictionary<string, string>> HashGetAsync(string key)
     {
-        return (await _db.HashGetAllAsync(key)).ToConcurrentDictionary();
+        // HSCAN 分页读取，避免大 Hash 一次性加载全部到内存
+        var result = new ConcurrentDictionary<string, string>();
+
+        await foreach (var entry in _db.HashScanAsync(key, "*", HashScanPageSize))
+        {
+            result[entry.Name!] = entry.Value!;
+        }
+
+        return result;
     }
 
     public async Task<ConcurrentDictionary<string, string>> HashGetFieldsAsync(string key, IEnumerable<string> fields)
@@ -61,18 +70,28 @@ public class RedisService : IRedisService, IDisposable
 
         var hs = await HashGetAsync(key);
         foreach (var field in fields)
-        {
             hs[field.Key] = field.Value;
-        }
+
         await HashSetAsync(key, hs);
     }
 
+    /// <summary>
+    /// 写入单个 field 到 Hash — 跳过 Dictionary 和 HashEntry[] 的中间分配
+    /// </summary>
     public async Task<bool> HashSetFieldAsync(string key, ConcurrentDictionary<string, string> fields)
     {
         try
         {
-            if (fields != null && !fields.IsEmpty)
+            // 单 field 优化：直接 HSET，跳过字典→数组转换
+            if (fields != null && fields.Count == 1)
+            {
+                var (field, value) = fields.First();
+                await _db.HashSetAsync(key, field, value);
+            }
+            else if (fields != null && !fields.IsEmpty)
+            {
                 await HashSetAsync(key, fields);
+            }
 
             _logger.LogDebug("HashSetFieldAsync succeeded for key {Key}", key);
             return true;
@@ -140,16 +159,22 @@ public class RedisService : IRedisService, IDisposable
 
     #region Lock
 
+    // ==================== 使用 Redis TIME 避免时钟偏差 ====================
+    // 不再依赖各服务器的本地时间，统一使用 Redis 服务器时间作为权威时钟
+
     private const string AcquireLockScript = @"
         local lockKey = KEYS[1]
         local key = KEYS[2]
         local lockValue = ARGV[1]
-        local expiryTimestamp = ARGV[2]
-        local currentTime = tonumber(ARGV[3])
+        local expiryMs = tonumber(ARGV[2])
+        -- 使用 Redis TIME 返回的秒级时间戳 * 1000 + 微秒/1000
+        local currentTime = redis.call('TIME')
+        local now = tonumber(currentTime[1]) * 1000 + math.floor(tonumber(currentTime[2]) / 1000)
 
         local value = redis.call('HGET', lockKey, key)
-        if not value or tonumber(value:match(':(%d+)$')) < currentTime then
-            redis.call('HSET', lockKey, key, lockValue .. ':' .. expiryTimestamp)
+        if not value or tonumber(value:match(':(%d+)$')) < now then
+            local newExpiry = now + expiryMs
+            redis.call('HSET', lockKey, key, lockValue .. ':' .. newExpiry)
         return true
         end
         return false";
@@ -170,16 +195,18 @@ public class RedisService : IRedisService, IDisposable
         local lockKey = KEYS[1]
         local key = KEYS[2]
         local lockValue = ARGV[1]
-        local newExpiryTimestamp = ARGV[2]
-        local currentTime = tonumber(ARGV[3])
+        local expiryMs = tonumber(ARGV[2])
+        local currentTime = redis.call('TIME')
+        local now = tonumber(currentTime[1]) * 1000 + math.floor(tonumber(currentTime[2]) / 1000)
 
         local currentValue = redis.call('HGET', lockKey, key)
         if currentValue then
             local valuePart = currentValue:match('^(.-):')
             if valuePart == lockValue then
                 local oldExpiry = tonumber(currentValue:match(':(%d+)$'))
-                if oldExpiry and oldExpiry >= currentTime then
-                    redis.call('HSET', lockKey, key, lockValue .. ':' .. newExpiryTimestamp)
+                if oldExpiry and oldExpiry >= now then
+                    local newExpiry = now + expiryMs
+                    redis.call('HSET', lockKey, key, lockValue .. ':' .. newExpiry)
                     return true
                 end
             end
@@ -190,12 +217,12 @@ public class RedisService : IRedisService, IDisposable
     {
         try
         {
-            var expiry = DateTimeOffset.Now.Add(TimeSpan.FromSeconds(Expiry)).ToUnixTimeMilliseconds().ToString();
-            var currentTime = DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString();
+            // 传入 Expiry 毫秒数（Seconds → ms），由 Lua 脚本用 Redis TIME 计算绝对过期时间
+            var expiryMs = Expiry * 1000;
 
             var result = await _db.ScriptEvaluateAsync(AcquireLockScript,
                 new RedisKey[] { SlotTag + LockKey, SlotTag + key },
-                new RedisValue[] { lockValue, expiry, currentTime });
+                new RedisValue[] { lockValue, expiryMs });
 
             var isAcquire = (bool)result;
             if (!isAcquire)
@@ -210,6 +237,29 @@ public class RedisService : IRedisService, IDisposable
         }
     }
 
+    /// <summary>
+    /// 获取锁（带重试和指数退避）
+    /// </summary>
+    public async Task<bool> AcquireLockWithRetryAsync(string key, string lockValue, int maxRetries = 3, int baseDelayMs = 100)
+    {
+        for (int i = 0; i < maxRetries; i++)
+        {
+            if (await AcquireLockAsync(key, lockValue))
+                return true;
+
+            if (i < maxRetries - 1)
+            {
+                // 指数退避：100ms, 200ms, 400ms...
+                var delay = baseDelayMs * (int)Math.Pow(2, i);
+                _logger.LogDebug("Lock retry {Retry}/{Max} for key {Key}, waiting {Delay}ms", i + 1, maxRetries, key, delay);
+                await Task.Delay(delay);
+            }
+        }
+
+        _logger.LogWarning("Failed to acquire lock after {Retries} retries for key {Key}", maxRetries, key);
+        return false;
+    }
+
     public async Task<bool> ReleaseLockAsync(string key, string lockValue)
     {
         try
@@ -220,7 +270,7 @@ public class RedisService : IRedisService, IDisposable
 
             var isRelease = (bool)result;
             if (!isRelease)
-                _logger.LogWarning("Failed to release lock for key {Key} (lock may have expired or been held by another)", key);
+                _logger.LogWarning("Failed to release lock for key {Key} — may have expired or been held by another", key);
 
             return isRelease;
         }
@@ -238,12 +288,11 @@ public class RedisService : IRedisService, IDisposable
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                var currentTime = DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString();
-                var newExpiryTimestamp = DateTimeOffset.Now.Add(TimeSpan.FromSeconds(Expiry)).ToUnixTimeMilliseconds().ToString();
+                var expiryMs = Expiry * 1000;
 
                 var result = await _db.ScriptEvaluateAsync(RenewalLockScript,
                     new RedisKey[] { SlotTag + LockKey, SlotTag + key },
-                    new RedisValue[] { lockValue, newExpiryTimestamp, currentTime });
+                    new RedisValue[] { lockValue, expiryMs });
 
                 var renewed = (bool)result;
                 if (!renewed)

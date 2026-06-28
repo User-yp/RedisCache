@@ -1,8 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using RedisCache;
-using RedisCache.Attributes;
 using RedisCache.DBService;
-using RedisCache.WebApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,15 +18,8 @@ builder.Services.AddRedisCache(builder.Configuration, onFlush: async (sp, key, e
     using var scope = sp.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<BaseDbContext>();
 
-    // 根据实体类型分发到对应的 DbSet
-    // 实际项目中建议写类型分发逻辑或使用 switch expression
-    var entityType = key.GetRedisEntity();
-    if (entityType == typeof(TestEntity))
-    {
-        db.Set<TestEntity>().AddRange(entities.Cast<TestEntity>());
-    }
-    // else if (entityType == typeof(OtherEntity)) { ... }
-
+    // 一行代码：EF Core 根据每个 entity 的 CLR 类型自动路由到对应的 DbSet
+    db.AddRange(entities);
     await db.SaveChangesAsync();
     return true;
 });

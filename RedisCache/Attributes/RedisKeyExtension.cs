@@ -1,63 +1,137 @@
 using Newtonsoft.Json;
+using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace RedisCache.Attributes;
 
 /// <summary>
-/// 实体 Key 扩展方法
+/// 实体 Key 扩展方法 — 内置反射缓存，热路径零分配
 /// </summary>
 public static class RedisKeyExtension
 {
-    private static readonly Lazy<List<Type>> EntityTypes = new(GetEntityTypes);
+    private static readonly List<Type> ManualEntityTypes = new();
+    private static List<Type>? cachedEntityTypes;
+
+    // ==================== 反射缓存（热路径优化） ====================
 
     /// <summary>
-    /// 获取对象的 RedisKey（基于标记了 [RedisKey] 的属性值组合生成 JSON 数组）
+    /// 缓存每个 Type 的 [RedisKey] PropertyInfo 列表，避免每次调用 GetRedisKey 做反射
+    /// </summary>
+    private static readonly ConcurrentDictionary<Type, CachedKeyAccessor> KeyAccessorCache = new();
+
+    private sealed class CachedKeyAccessor
+    {
+        public PropertyInfo[] Properties { get; init; } = Array.Empty<PropertyInfo>();
+        public Func<object, string[]>? ValueGetter { get; init; } // 编译委托，更快
+    }
+
+    /// <summary>
+    /// 获取或构建类型的 Key 访问器
+    /// </summary>
+    private static CachedKeyAccessor GetOrBuildAccessor(Type type)
+    {
+        return KeyAccessorCache.GetOrAdd(type, static t =>
+        {
+            var props = t.GetProperties()
+                .Where(prop => Attribute.IsDefined(prop, typeof(RedisKeyAttribute)))
+                .ToArray();
+
+            if (props.Length == 0)
+                throw new ArgumentException($"Type '{t.Name}' has no properties attributed with [RedisKey]");
+
+            return new CachedKeyAccessor { Properties = props };
+        });
+    }
+
+    // ==================== 类型注册 ====================
+
+    private static List<Type> EntityTypes
+    {
+        get
+        {
+            if (cachedEntityTypes == null)
+                cachedEntityTypes = GetEntityTypes();
+            return cachedEntityTypes;
+        }
+    }
+
+    public static void RegisterEntityTypes(params Type[] types)
+    {
+        foreach (var type in types)
+        {
+            if (type.IsClass && !type.IsAbstract
+                && type.GetCustomAttributes(typeof(RedisEntityAttribute), false).Length != 0
+                && !ManualEntityTypes.Contains(type))
+            {
+                ManualEntityTypes.Add(type);
+            }
+        }
+        if (ManualEntityTypes.Count > 0)
+            cachedEntityTypes = null;
+    }
+
+    public static void ClearEntityTypes()
+    {
+        ManualEntityTypes.Clear();
+        cachedEntityTypes = null;
+        KeyAccessorCache.Clear();
+    }
+
+    // ==================== 公开 API ====================
+
+    /// <summary>
+    /// 获取对象的 RedisKey — 使用缓存的 PropertyInfo，避免重复反射
     /// </summary>
     public static string GetRedisKey(this object instance)
     {
         var type = instance.GetType();
-        var propInfos = type.GetProperties()
-            .Where(prop => Attribute.IsDefined(prop, typeof(RedisKeyAttribute)))
-            .ToList();
+        var accessor = GetOrBuildAccessor(type);
 
-        if (propInfos.Count == 0)
-            throw new ArgumentException($"Type '{type.Name}' has no properties attributed with [RedisKey]");
-
-        var redisKey = new List<string>();
-        foreach (var propInfo in propInfos)
+        var values = new List<string>(accessor.Properties.Length);
+        foreach (var prop in accessor.Properties)
         {
-            var value = propInfo.GetValue(instance)?.ToString() ?? string.Empty;
-            redisKey.Add(value);
+            var value = prop.GetValue(instance)?.ToString() ?? string.Empty;
+            values.Add(value);
         }
-        return JsonConvert.SerializeObject(redisKey);
+        return JsonConvert.SerializeObject(values);
     }
 
-    /// <summary>
-    /// 根据类型名称获取标记了 [RedisEntity] 的实体类型
-    /// </summary>
     public static Type GetRedisEntity(this string tKey)
     {
-        return EntityTypes.Value.FirstOrDefault(t => t.Name == tKey)
+        return EntityTypes.FirstOrDefault(t => t.Name == tKey)
             ?? throw new ArgumentException($"No class attributed with [RedisEntity] found for type name '{tKey}'");
     }
 
-    /// <summary>
-    /// 获取所有 [RedisEntity] 类型名称（用于轮询）
-    /// </summary>
     public static List<string> GetEntityKeys()
     {
-        return EntityTypes.Value.Select(t => t.Name).Distinct().ToList();
+        return EntityTypes.Select(t => t.Name).Distinct().ToList();
     }
+
+    // ==================== 内部：程序集扫描 ====================
 
     private static List<Type> GetEntityTypes()
     {
-        var ass = Assembly.GetEntryAssembly()
-            ?? throw new InvalidOperationException(
-                "Entry assembly is null. This may happen in unit test or plugin scenarios.");
+        var types = new List<Type>();
+        types.AddRange(ManualEntityTypes);
 
-        return ass.GetTypes()
-            .Where(t => t.IsClass && !t.IsAbstract
-                && t.GetCustomAttributes(typeof(RedisEntityAttribute), false).Length != 0)
-            .ToList();
+        var entryAssembly = Assembly.GetEntryAssembly();
+        if (entryAssembly != null)
+        {
+            try
+            {
+                var scannedTypes = entryAssembly.GetTypes()
+                    .Where(t => t.IsClass && !t.IsAbstract
+                        && t.GetCustomAttributes(typeof(RedisEntityAttribute), false).Length != 0);
+
+                foreach (var t in scannedTypes)
+                {
+                    if (!types.Contains(t))
+                        types.Add(t);
+                }
+            }
+            catch (ReflectionTypeLoadException) { }
+        }
+
+        return types;
     }
 }

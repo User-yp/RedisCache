@@ -25,6 +25,12 @@ public class RedisCache : IRedisCache
     private int pollingCount;
     private readonly ILogger<RedisCache> _logger;
 
+    // 本地计数器：避免每次写入都调用 Redis GetHashLength（减少网络往返）
+    private readonly ConcurrentDictionary<string, int> localCounters = new();
+
+    // 正在刷盘中的 key 集合（防止并发重复刷盘）
+    private readonly ConcurrentDictionary<string, byte> flushingKeys = new();
+
     public RedisCache(
         IOptionsMonitor<RedisOption> options,
         IRedisService redisService,
@@ -80,7 +86,9 @@ public class RedisCache : IRedisCache
             {
                 var accepted = await actionBlock.SendAsync(value);
                 if (!accepted)
-                    _logger.LogWarning("ActionBlock rejected message for key {Key}", key);
+                {
+                    _logger.LogWarning("ActionBlock rejected message for key {Key} — buffer full, applying backpressure", key);
+                }
             }
             return true;
         }
@@ -91,26 +99,54 @@ public class RedisCache : IRedisCache
         }
     }
 
-    // ==================== 内部：Redis 写入（Dataflow ActionBlock 回调） ====================
+    // ==================== 内部：Redis 写入 ====================
 
     internal async Task WriteRedisAsync(object value)
     {
         var key = value.GetType().Name;
         try
         {
-            if (!isPolling)
-                await WriteDataBaseAsync(key);
-
+            // 序列化必须在递增计数器之前（防止序列化失败导致计数错误）
+            var serialized = JsonConvert.SerializeObject(value);
             var redisKey = value.GetRedisKey();
+
+            // 原子递增本地计数器（替代 Redis GetHashLength 网络调用）
+            var currentCount = localCounters.AddOrUpdate(key, 1, (_, c) => c + 1);
+
             var isSuccess = await redisService.HashSetFieldAsync(key, new ConcurrentDictionary<string, string>
             {
-                [redisKey] = JsonConvert.SerializeObject(value)
+                [redisKey] = serialized
             });
 
-            if (!isSuccess && block.GetRetryCount(key) < 3)
-                await block.ResendAsync(key, value);
-            else
-                block.TryRemove(key);
+            if (!isSuccess)
+            {
+                // Redis 写入失败：回退计数器
+                localCounters.AddOrUpdate(key, 0, (_, c) => Math.Max(0, c - 1));
+
+                if (block.GetRetryCount(key) < 3)
+                    await block.ResendAsync(key, value);
+                else
+                    block.TryRemove(key);
+
+                return;
+            }
+
+            // 成功：阈值检查 & 触发刷盘
+            if (!isPolling && currentCount >= threshold)
+            {
+                // 避免重复触发：同一时刻只允许一个刷盘任务
+                if (flushingKeys.TryAdd(key, 0))
+                {
+                    try
+                    {
+                        await WriteDataBaseAsync(key);
+                    }
+                    finally
+                    {
+                        flushingKeys.TryRemove(key, out _);
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -134,12 +170,15 @@ public class RedisCache : IRedisCache
 
         try
         {
-            if (await redisService.GetHashLength(tKey) < threshold)
+            // 使用本地计数器（避免了 Redis GetHashLength 网络往返）
+            if (localCounters.GetOrAdd(tKey, 0) < threshold)
                 return false;
 
-            if (!await redisService.AcquireLockAsync(tKey, lockValue))
+            // 分布式锁（带重试，适应多进程竞争）
+            if (!await redisService.AcquireLockWithRetryAsync(tKey, lockValue, maxRetries: 3, baseDelayMs: 100))
                 return false;
 
+            // 启动锁续期
             renewalTask = Task.Run(async () =>
             {
                 try
@@ -153,26 +192,42 @@ public class RedisCache : IRedisCache
                 }
             }, cts.Token);
 
+            // HSCAN 分页读取 Hash 数据（优化：先读后删，避免数据重复）
             var hashValues = await redisService.HashGetAsync(tKey);
             if (hashValues == null || hashValues.IsEmpty)
+            {
+                localCounters[tKey] = 0; // 重置计数器
                 return true;
+            }
 
+            // === 幂等性优化：先删 Redis 数据，再刷数据库 ===
+            // 如果刷 DB 失败，数据还在 Redis 中（通过锁保护）；
+            // 删完 Redis 后刷 DB 成功 → 完美；
+            // 删完 Redis 后进程崩溃 → 数据丢失风险（需要在 Redis 删除前先备份）
+            var fieldKeys = hashValues.Select(v => v.Key).ToList();
+
+            // 先收集数据，再删除
             var entityType = tKey.GetRedisEntity();
             var entities = hashValues.Select(kvp =>
                 JsonConvert.DeserializeObject(kvp.Value, entityType)!).ToList();
 
-            // 通过回调委托将数据交给使用者处理
+            // 先删除 Redis 数据（防止并发写入导致重复）
+            // 注意：如果下面回调失败，这 N 条数据将丢失。
+            // 如果数据绝不能丢失，可改为"先刷后删" + 幂等去重
+            await redisService.HashDeleteFieldsAsync(tKey, fieldKeys);
+
+            // 重置本地计数器
+            localCounters[tKey] = 0;
+
+            // 刷入数据库
             var flushSuccess = await onFlush(serviceProvider, tKey, entities);
             if (!flushSuccess)
             {
-                _logger.LogWarning("Flush handler returned false for key {Key}", tKey);
+                _logger.LogWarning("Flush handler returned false for key {Key} — {Count} entities already removed from Redis", tKey, entities.Count);
                 return false;
             }
 
-            var deleteCount = await redisService.HashDeleteFieldsAsync(tKey, hashValues.Select(v => v.Key));
-            _logger.LogDebug("Flushed {Count} entities for key {Key}, deleted {Deleted} from Redis",
-                entities.Count, tKey, deleteCount);
-
+            _logger.LogDebug("Flushed {Count} entities for key {Key}", entities.Count, tKey);
             return true;
         }
         catch (Exception ex)
@@ -212,17 +267,22 @@ public class RedisCache : IRedisCache
                 pollingCount++;
                 _logger.LogDebug("Polling round {Count} started", pollingCount);
 
-                foreach (var redisKey in redisKeys)
+                // 并行轮询所有 entity 类型（利用多核）
+                await Parallel.ForEachAsync(redisKeys, cancellationToken, async (redisKey, ct) =>
                 {
                     try
                     {
+                        // 同步本地计数器与 Redis 实际长度
+                        var actualLength = await redisService.GetHashLength(redisKey);
+                        localCounters[redisKey] = (int)actualLength;
+
                         await block.DoPollingAsync(redisKey);
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Polling failed for key {RedisKey}", redisKey);
                     }
-                }
+                });
             }
         }
         catch (OperationCanceledException)

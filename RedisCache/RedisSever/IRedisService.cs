@@ -15,6 +15,7 @@ public interface IRedisService
     Task<long> GetHashLength(string key);
     Task<bool> KeyExistsAsync(string key);
     Task<bool> AcquireLockAsync(string key, string lockValue);
+    Task<bool> AcquireLockWithRetryAsync(string key, string lockValue, int maxRetries = 3, int baseDelayMs = 100);
     Task<bool> ReleaseLockAsync(string key, string lockValue);
     Task RenewalLockAsync(string key, string lockValue, CancellationToken cancellationToken);
 }
