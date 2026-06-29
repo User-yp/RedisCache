@@ -4,6 +4,12 @@ namespace RedisCache.Tests;
 
 public class RedisKeyExtensionTests
 {
+    public RedisKeyExtensionTests()
+    {
+        RedisKeyExtension.ClearEntityTypes();
+        RedisKeyExtension.RegisterEntityTypes(typeof(TestUser), typeof(TestOrder), typeof(InvalidEntity));
+    }
+
     // ==================== GetRedisKey ====================
 
     [Fact]

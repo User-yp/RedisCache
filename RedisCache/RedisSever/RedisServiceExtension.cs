@@ -1,24 +1,11 @@
 ﻿using Newtonsoft.Json;
 using StackExchange.Redis;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace RedisCache.RedisSever;
 
 public static class RedisServiceExtension
 {
-    public static void AddKey(this List<string> strings, string key)
-    {
-        if (!strings.Contains(key))
-        {
-            strings.Add(key);
-        }
-    }
-
     public static RedisValue ToRedisValue<T>(this T value)
     {
         if (value == null)
@@ -34,8 +21,12 @@ public static class RedisServiceExtension
 
     public static RedisValue[] ToRedisValues<T>(this IEnumerable<T> values)
     {
-        var enumerable = values as T[] ?? values.ToArray();
-        return enumerable.Length == 0 ? Array.Empty<RedisValue>() : enumerable.Select(v => v.ToRedisValue()).ToArray();
+        var arr = values as T[] ?? values.ToArray();
+        if (arr.Length == 0) return Array.Empty<RedisValue>();
+        var result = new RedisValue[arr.Length];
+        for (int i = 0; i < arr.Length; i++)
+            result[i] = arr[i].ToRedisValue();
+        return result;
     }
 
     public static HashEntry[] ToHashEntries(this ConcurrentDictionary<string, string> entries)

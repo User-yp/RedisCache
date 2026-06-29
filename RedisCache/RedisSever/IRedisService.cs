@@ -13,7 +13,10 @@ public interface IRedisService
     Task<bool> HashFieldsExistsAsync(string key, IEnumerable<string> fields);
     Task<long> HashDeleteFieldsAsync(string key, IEnumerable<string> fields);
     Task<long> GetHashLength(string key);
+    Task<bool> SetKeyExpireAsync(string key, TimeSpan expiry);
     Task<bool> KeyExistsAsync(string key);
+    Task<long> KeyDeleteAsync(IEnumerable<string> keys);
+    Task<bool> KeyDeleteAsync(string key);
     Task<bool> AcquireLockAsync(string key, string lockValue);
     Task<bool> AcquireLockWithRetryAsync(string key, string lockValue, int maxRetries = 3, int baseDelayMs = 100);
     Task<bool> ReleaseLockAsync(string key, string lockValue);

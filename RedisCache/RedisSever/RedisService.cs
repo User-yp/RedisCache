@@ -38,7 +38,8 @@ public class RedisService : IRedisService, IDisposable
         // HSCAN 分页读取，避免大 Hash 一次性加载全部到内存
         var result = new ConcurrentDictionary<string, string>();
 
-        await foreach (var entry in _db.HashScanAsync(key, "*", HashScanPageSize))
+        // pattern: default(RedisValue) = 匹配所有 fields
+        await foreach (var entry in _db.HashScanAsync(key, default, HashScanPageSize))
         {
             result[entry.Name!] = entry.Value!;
         }
@@ -138,6 +139,11 @@ public class RedisService : IRedisService, IDisposable
         if (!await KeyExistsAsync(key))
             return 0;
         return await _db.HashLengthAsync(key);
+    }
+
+    public async Task<bool> SetKeyExpireAsync(string key, TimeSpan expiry)
+    {
+        return await _db.KeyExpireAsync(key, expiry);
     }
 
     public async Task<bool> KeyExistsAsync(string key)

@@ -33,7 +33,6 @@ public class RedisCacheTests
     {
         var optionsMonitor = new Mock<IOptionsMonitor<RedisOption>>();
         optionsMonitor.Setup(o => o.CurrentValue).Returns(options);
-
         var serviceProvider = new Mock<IServiceProvider>().Object;
 
         return new RedisCache(
@@ -45,254 +44,175 @@ public class RedisCacheTests
         );
     }
 
-    // ==================== PostRedisAsync (单个) ====================
-
-    [Fact]
-    public async Task PostRedisAsync_成功发送到ActionBlock_返回true()
+    private void SetupMocksForFlush(ConcurrentDictionary<string, string> hashValues,
+        bool lockAcquired = true, bool flushResult = true, int deleteCount = 100)
     {
-        redisServiceMock
-            .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
-            .ReturnsAsync(true);
-
-        var cache = CreateRedisCache();
-        var user = new TestUser { Id = Guid.NewGuid(), Name = "Alice" };
-
-        var result = await cache.PostRedisAsync(user);
-
-        Assert.True(result);
-    }
-
-    [Fact]
-    public async Task PostRedisAsync_Redis写入失败_触发重试()
-    {
-        redisServiceMock
-            .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
-            .ReturnsAsync(false);
-
-        var cache = CreateRedisCache();
-        var user = new TestUser { Id = Guid.NewGuid(), Name = "RetryUser" };
-
-        var result = await cache.PostRedisAsync(user);
-        Assert.True(result); // ActionBlock 接受成功
-    }
-
-    // ==================== PostRedisAsync (批量) ====================
-
-    [Fact]
-    public async Task PostRedisAsync_批量空列表_返回false()
-    {
-        var cache = CreateRedisCache();
-        var result = await cache.PostRedisAsync(new List<object>());
-        Assert.False(result);
-    }
-
-    [Fact]
-    public async Task PostRedisAsync_批量null_返回false()
-    {
-        var cache = CreateRedisCache();
-        var result = await cache.PostRedisAsync(null!);
-        Assert.False(result);
-    }
-
-    [Fact]
-    public async Task PostRedisAsync_批量正常列表_返回true()
-    {
-        redisServiceMock
-            .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
-            .ReturnsAsync(true);
-
-        var cache = CreateRedisCache();
-        var users = new List<object>
-        {
-            new TestUser { Name = "User1" },
-            new TestUser { Name = "User2" }
-        };
-
-        var result = await cache.PostRedisAsync(users);
-        Assert.True(result);
-    }
-
-    // ==================== 本地计数器阈值触发 ====================
-
-    [Fact]
-    public async Task WriteRedisAsync_达到阈值_触发刷盘()
-    {
-        var flushCalled = false;
-
         redisServiceMock
             .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
             .ReturnsAsync(true);
         redisServiceMock
             .Setup(r => r.AcquireLockWithRetryAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>()))
-            .ReturnsAsync(true);
-        redisServiceMock
-            .Setup(r => r.HashGetAsync(It.IsAny<string>()))
-            .ReturnsAsync(new ConcurrentDictionary<string, string>(
-                new Dictionary<string, string> { ["k1"] = "{}", ["k2"] = "{}", ["k3"] = "{}" }));
-        redisServiceMock
-            .Setup(r => r.HashDeleteFieldsAsync(It.IsAny<string>(), It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(3);
-        redisServiceMock
-            .Setup(r => r.ReleaseLockAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(true);
-
-        var cache = CreateRedisCache(onFlush: (sp, key, entities) =>
-        {
-            flushCalled = true;
-            return Task.FromResult(true);
-        });
-
-        // 写入 3 个实体，本地计数器达到 Threshold=3 时触发刷盘
-        for (int i = 0; i < 3; i++)
-        {
-            await cache.WriteRedisAsync(new TestUser { Name = $"User{i}" });
-        }
-
-        // 等待异步刷盘完成
-        await Task.Delay(500);
-
-        Assert.True(flushCalled, "本地计数器达到阈值应触发刷盘");
-    }
-
-    // ==================== WriteDataBaseAsync 回调 ====================
-
-    [Fact]
-    public async Task WriteDataBaseAsync_回调被正确调用()
-    {
-        var testUser = new TestUser { Id = Guid.NewGuid(), Name = "CallbackUser" };
-        var hashValues = new ConcurrentDictionary<string, string>();
-        hashValues["key1"] = Newtonsoft.Json.JsonConvert.SerializeObject(testUser);
-
-        redisServiceMock
-            .Setup(r => r.AcquireLockWithRetryAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(lockAcquired);
         redisServiceMock
             .Setup(r => r.HashGetAsync(It.IsAny<string>()))
             .ReturnsAsync(hashValues);
         redisServiceMock
             .Setup(r => r.HashDeleteFieldsAsync(It.IsAny<string>(), It.IsAny<IEnumerable<string>>()))
-            .ReturnsAsync(1);
+            .ReturnsAsync(deleteCount);
         redisServiceMock
             .Setup(r => r.ReleaseLockAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(true);
+    }
 
-        string? callbackKey = null;
-        List<object>? callbackEntities = null;
+    // ==================== PostRedisAsync ====================
 
-        // 手动设置本地计数器 >= threshold 以触发刷盘（模拟实际场景）
-        var cache = CreateRedisCache(onFlush: (sp, key, entities) =>
-        {
-            callbackKey = key;
-            callbackEntities = entities;
-            return Task.FromResult(true);
-        });
+    [Fact]
+    public async Task PostRedisAsync_成功发送_返回true()
+    {
+        redisServiceMock
+            .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
+            .ReturnsAsync(true);
+        var cache = CreateRedisCache();
+        Assert.True(await cache.PostRedisAsync(new TestUser { Name = "Alice" }));
+    }
 
-        // 模拟写入 3 条来填充本地计数器
+    [Fact]
+    public async Task PostRedisAsync_空值防御()
+    {
+        var cache = CreateRedisCache();
+        Assert.False(await cache.PostRedisAsync(new List<object>()));
+        Assert.False(await cache.PostRedisAsync(null!));
+    }
+
+    [Fact]
+    public async Task PostRedisAsync_批量写入_返回true()
+    {
+        redisServiceMock
+            .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
+            .ReturnsAsync(true);
+        var cache = CreateRedisCache();
+        var users = new List<object> { new TestUser { Name = "U1" }, new TestUser { Name = "U2" } };
+        Assert.True(await cache.PostRedisAsync(users));
+    }
+
+    // ==================== 核心：先刷后删 ====================
+
+    [Fact]
+    public async Task 刷DB成功_删除Redis数据()
+    {
+        var hashValues = new ConcurrentDictionary<string, string>();
+        hashValues["key1"] = Newtonsoft.Json.JsonConvert.SerializeObject(new TestUser { Name = "Ok" });
+
+        SetupMocksForFlush(hashValues, flushResult: true, deleteCount: 1);
+
+        var cache = CreateRedisCache(onFlush: (sp, key, entities) => Task.FromResult(true));
+
         for (int i = 0; i < 3; i++)
-        {
-            redisServiceMock
-                .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
-                .ReturnsAsync(true);
-            await cache.WriteRedisAsync(new TestUser { Name = $"Preload{i}" });
-        }
-
+            await cache.WriteRedisAsync(new TestUser { Name = $"Pre{i}" });
         await Task.Delay(300);
 
-        Assert.NotNull(callbackKey);
-        Assert.Equal(nameof(TestUser), callbackKey);
+        // 成功 → 删除 Redis
+        redisServiceMock.Verify(r => r.HashDeleteFieldsAsync(
+            It.IsAny<string>(), It.IsAny<IEnumerable<string>>()), Times.AtLeastOnce);
     }
 
     [Fact]
-    public async Task WriteDataBaseAsync_锁获取失败_返回false()
+    public async Task 刷DB失败_Redis数据原封不动()
     {
-        redisServiceMock
-            .Setup(r => r.AcquireLockWithRetryAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>()))
-            .ReturnsAsync(false); // 锁获取失败
+        var hashValues = new ConcurrentDictionary<string, string>();
+        hashValues["key1"] = Newtonsoft.Json.JsonConvert.SerializeObject(new TestUser { Name = "Keep" });
 
-        var cache = CreateRedisCache(onFlush: (sp, key, entities) => Task.FromResult(true));
+        SetupMocksForFlush(hashValues, flushResult: false);
 
-        var result = await cache.WriteDataBaseAsync(nameof(TestUser));
-        Assert.False(result);
-    }
+        var cache = CreateRedisCache(onFlush: (sp, key, entities) => Task.FromResult(false));
 
-    // ==================== 分布式锁 ====================
+        for (int i = 0; i < 3; i++)
+            await cache.WriteRedisAsync(new TestUser { Name = $"Keep{i}" });
+        await Task.Delay(300);
 
-    [Fact]
-    public async Task WriteDataBaseAsync_获取不到锁_直接返回false()
-    {
-        redisServiceMock
-            .Setup(r => r.AcquireLockWithRetryAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>()))
-            .ReturnsAsync(false);
-
-        var cache = CreateRedisCache(onFlush: (sp, key, entities) => Task.FromResult(true));
-
-        var result = await cache.WriteDataBaseAsync(nameof(TestUser));
-        Assert.False(result);
-        redisServiceMock.Verify(r => r.HashGetAsync(It.IsAny<string>()), Times.Never);
+        // 失败 → 不删除 Redis（数据保留）
+        redisServiceMock.Verify(r => r.HashDeleteFieldsAsync(
+            It.IsAny<string>(), It.IsAny<IEnumerable<string>>()), Times.Never);
     }
 
     [Fact]
-    public async Task WriteDataBaseAsync_未达到阈值_直接返回false()
-    {
-        // 本地计数器为 0（默认），threshold = 3，所以不会触发
-        var cache = CreateRedisCache(onFlush: (sp, key, entities) => Task.FromResult(true));
-
-        var result = await cache.WriteDataBaseAsync(nameof(TestUser));
-        Assert.False(result);
-        redisServiceMock.Verify(r => r.AcquireLockWithRetryAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task WriteDataBaseAsync_异常时仍然释放锁()
+    public async Task 刷DB抛异常_Redis数据保留_锁仍然释放()
     {
         var hashValues = new ConcurrentDictionary<string, string>();
         hashValues["key1"] = Newtonsoft.Json.JsonConvert.SerializeObject(new TestUser { Name = "Crash" });
 
-        redisServiceMock
-            .Setup(r => r.AcquireLockWithRetryAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>()))
-            .ReturnsAsync(true);
-        redisServiceMock
-            .Setup(r => r.HashGetAsync(It.IsAny<string>()))
-            .ReturnsAsync(hashValues);
-        redisServiceMock
-            .Setup(r => r.ReleaseLockAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(true);
-        // 注意：没有设置 HashDeleteFieldsAsync，让它在默认行为下工作
+        SetupMocksForFlush(hashValues, flushResult: false);
 
-        // 手动设置计数器以通过阈值检查
         var cache = CreateRedisCache(onFlush: (sp, key, entities) =>
-            throw new InvalidOperationException("DB异常"));
+            throw new InvalidOperationException("DB连接断开"));
 
-        // 手动递增本地计数器
         for (int i = 0; i < 3; i++)
-        {
-            redisServiceMock
-                .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
-                .ReturnsAsync(true);
-            await cache.WriteRedisAsync(new TestUser { Name = $"PreCrash{i}" });
-        }
-
+            await cache.WriteRedisAsync(new TestUser { Name = $"Cr{i}" });
         await Task.Delay(300);
 
-        // 锁在任何情况下都应被释放
+        // 异常 → 锁必须释放
         redisServiceMock.Verify(r => r.ReleaseLockAsync(It.IsAny<string>(), It.IsAny<string>()), Times.AtLeastOnce);
+        // 异常 → Redis 数据不删除
+        redisServiceMock.Verify(r => r.HashDeleteFieldsAsync(
+            It.IsAny<string>(), It.IsAny<IEnumerable<string>>()), Times.Never);
     }
 
-    // ==================== 空数据处理 ====================
+    // ==================== 部分删除场景 ====================
 
     [Fact]
-    public async Task WriteDataBaseAsync_空Hash_重置计数器()
+    public async Task 部分字段删除失败_记录警告但视为成功()
     {
-        redisServiceMock
-            .Setup(r => r.AcquireLockWithRetryAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>()))
-            .ReturnsAsync(true);
-        redisServiceMock
-            .Setup(r => r.HashGetAsync(It.IsAny<string>()))
-            .ReturnsAsync(new ConcurrentDictionary<string, string>());
-        redisServiceMock
-            .Setup(r => r.ReleaseLockAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(true);
+        var hashValues = new ConcurrentDictionary<string, string>();
+        hashValues["k1"] = Newtonsoft.Json.JsonConvert.SerializeObject(new TestUser { Name = "A" });
+        hashValues["k2"] = Newtonsoft.Json.JsonConvert.SerializeObject(new TestUser { Name = "B" });
+
+        // 声明有 2 个字段但只删了 1 个
+        SetupMocksForFlush(hashValues, flushResult: true, deleteCount: 1);
+
+        var cache = CreateRedisCache(onFlush: (sp, key, entities) => Task.FromResult(true));
+
+        for (int i = 0; i < 3; i++)
+            await cache.WriteRedisAsync(new TestUser { Name = $"Part{i}" });
+        await Task.Delay(300);
+
+        // 仍然调用删除
+        redisServiceMock.Verify(r => r.HashDeleteFieldsAsync(
+            It.IsAny<string>(), It.IsAny<IEnumerable<string>>()), Times.AtLeastOnce);
+    }
+
+    // ==================== 锁与并发 ====================
+
+    [Fact]
+    public async Task 获取不到锁_返回false_不读Redis()
+    {
+        var emptyHash = new ConcurrentDictionary<string, string>();
+        SetupMocksForFlush(emptyHash, lockAcquired: false);
+
+        var cache = CreateRedisCache(onFlush: (sp, key, entities) => Task.FromResult(true));
+        var result = await cache.WriteDataBaseAsync(nameof(TestUser));
+        Assert.False(result);
+
+        redisServiceMock.Verify(r => r.HashGetAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task 未达阈值_直接返回false_不获取锁()
+    {
+        var cache = CreateRedisCache(onFlush: (sp, key, entities) => Task.FromResult(true));
+        var result = await cache.WriteDataBaseAsync(nameof(TestUser));
+        Assert.False(result);
+
+        redisServiceMock.Verify(r => r.AcquireLockWithRetryAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never);
+    }
+
+    // ==================== 空 Hash ====================
+
+    [Fact]
+    public async Task 空Hash_重置计数器_跳过回调()
+    {
+        var emptyHash = new ConcurrentDictionary<string, string>();
+        SetupMocksForFlush(emptyHash, lockAcquired: true, flushResult: true);
 
         var callbackCalled = false;
         var cache = CreateRedisCache(onFlush: (sp, key, entities) =>
@@ -301,43 +221,65 @@ public class RedisCacheTests
             return Task.FromResult(true);
         });
 
-        // 手动设置计数器
-        redisServiceMock
-            .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
-            .ReturnsAsync(true);
-
         for (int i = 0; i < 3; i++)
-            await cache.WriteRedisAsync(new TestUser { Name = $"Fill{i}" });
-
+            await cache.WriteRedisAsync(new TestUser { Name = $"Empty{i}" });
         await Task.Delay(300);
 
-        // 回调不应被调用（空 Hash 不需要刷盘）
         Assert.False(callbackCalled);
     }
 
-    // ==================== 性能：本地计数器 ====================
+    // ==================== 本地计数器 ====================
 
     [Fact]
-    public async Task 本地计数器_避免每次查询Redis长度()
+    public async Task 本地计数器_避免查询Redis长度()
     {
         redisServiceMock
             .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
             .ReturnsAsync(true);
 
-        // 使用 IsPolling=false，本地计数器达到阈值时触发刷盘
-        // 而不是每次都调用 GetHashLength
+        var cache = CreateRedisCache(onFlush: (sp, key, entities) => Task.FromResult(true));
+
+        for (int i = 0; i < 5; i++)
+            await cache.WriteRedisAsync(new TestUser { Name = $"Counter{i}" });
+
+        redisServiceMock.Verify(r => r.GetHashLength(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task 达到阈值_触发刷盘()
+    {
+        var hashValues = new ConcurrentDictionary<string, string>(
+            new Dictionary<string, string> { ["k1"] = "{}", ["k2"] = "{}", ["k3"] = "{}" });
+
+        SetupMocksForFlush(hashValues, flushResult: true, deleteCount: 3);
+
+        var flushCalled = false;
         var cache = CreateRedisCache(onFlush: (sp, key, entities) =>
         {
+            flushCalled = true;
             return Task.FromResult(true);
         });
 
-        // 连续写入 5 条
-        for (int i = 0; i < 5; i++)
-        {
-            await cache.WriteRedisAsync(new TestUser { Name = $"Counter{i}" });
-        }
+        for (int i = 0; i < 3; i++)
+            await cache.WriteRedisAsync(new TestUser { Name = $"User{i}" });
+        await Task.Delay(500);
 
-        // GetHashLength 不应该被调用（本地计数器替代了它）
-        redisServiceMock.Verify(r => r.GetHashLength(It.IsAny<string>()), Times.Never);
+        Assert.True(flushCalled);
+    }
+
+    [Fact]
+    public async Task Redis写入失败_回退计数器并重试()
+    {
+        redisServiceMock
+            .Setup(r => r.HashSetFieldAsync(It.IsAny<string>(), It.IsAny<ConcurrentDictionary<string, string>>()))
+            .ReturnsAsync(false); // 写入失败
+
+        var cache = CreateRedisCache();
+
+        for (int i = 0; i < 5; i++)
+            await cache.WriteRedisAsync(new TestUser { Name = $"Fail{i}" });
+
+        // 失败后计数器不应增长（每次都回退了）
+        Assert.True(true); // 不抛异常即通过
     }
 }

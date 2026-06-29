@@ -62,8 +62,8 @@ public static class RedisExtensions
 
         services.TryAddSingleton<IRedisService, RedisService>();
 
-        // 仅当 IRedisCache 尚未注册时添加
-        if (!services.Any(d => d.ServiceType == typeof(IRedisCache)))
+        // 仅当 IRedisCache 尚未注册时添加（避免重复注册）
+        if (services.All(d => d.ServiceType != typeof(IRedisCache)))
         {
             services.AddSingleton<IRedisCache, RedisCache>(sp =>
             {

@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using RedisCache.Attributes;
 
 namespace RedisCache.WebApi.Controllers;
 

@@ -22,7 +22,6 @@ public static class RedisKeyExtension
     private sealed class CachedKeyAccessor
     {
         public PropertyInfo[] Properties { get; init; } = Array.Empty<PropertyInfo>();
-        public Func<object, string[]>? ValueGetter { get; init; } // 编译委托，更快
     }
 
     /// <summary>
